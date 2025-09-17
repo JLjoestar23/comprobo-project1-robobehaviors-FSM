@@ -44,7 +44,6 @@ class RvizTutorial(Node):
 
         # publish marker
         self.publisher.publish(self.marker)
-        #print(self.marker)
 
 
 def main(args=None):
