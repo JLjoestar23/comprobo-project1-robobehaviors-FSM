@@ -3,7 +3,7 @@ from rclpy.node import Node
 from visualization_msgs.msg import Marker
 
 class RvizTutorial(Node):
-    """ This node's functionality is to drive a Neato to a targeted distance away from a detected obstacle."""
+    """ This node's functionality is to publish a marker as a rviz test."""
     def __init__(self):
         # intialize node name
         super().__init__('rviz_tutorial')
@@ -18,6 +18,7 @@ class RvizTutorial(Node):
         self.timer = self.create_timer(timer_period, self.publish_marker)
 
     def publish_marker(self):
+        """Publish a marker with specified parameters below."""
         # setting header
         self.marker.header.frame_id = "odom"
         self.marker.header.stamp = self.get_clock().now().to_msg()
