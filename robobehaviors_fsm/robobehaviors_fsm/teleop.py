@@ -8,7 +8,7 @@ import sys
 import termios
 
 class Teleop(Node):
-    """ This node's functionality is to drive a Neato to a targeted distance away from a detected obstacle."""
+    """ This node's functionality allows the user to control a Neato with a keyboard."""
     def __init__(self):
         # intialize node name
         super().__init__('teleop')
@@ -31,6 +31,7 @@ class Teleop(Node):
 
 
     def get_key(self):
+        """Receive, process, and return the detected keystroke."""
         tty.setraw(sys.stdin.fileno())
         select.select([sys.stdin], [], [], 0)
         key = sys.stdin.read(1)
@@ -38,6 +39,7 @@ class Teleop(Node):
         return key
     
     def teleop_loop(self):
+        """Main loop that allows drive control depending with the keyboard."""
         while self.running:
             # get the key stroke
             self.key = self.get_key()
