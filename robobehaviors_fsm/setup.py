@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'teleop = robobehaviors_fsm.teleop:main',
-            'rviz_tutorial = robobehaviors_fsm.rviz_tutorial:main'
+            'rviz_tutorial = robobehaviors_fsm.rviz_tutorial:main',
+            'drive_square = robobehaviors_fsm.drive_square:main'
         ],
     },
 )
