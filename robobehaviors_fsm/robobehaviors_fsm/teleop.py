@@ -26,7 +26,7 @@ class Teleop(Node):
 
         # initiate a blocking, timer-based loop
         self.running = True
-        self.key_thread = Thread(target=self.teleop_loop())
+        self.key_thread = Thread(target=self.teleop_loop)
         self.key_thread.start()
 
 
