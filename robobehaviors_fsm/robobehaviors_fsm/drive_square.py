@@ -44,6 +44,9 @@ class DriveSquare(Node):
     def main_loop(self):
         """Main loop that deals with navigation and control to drive a Neato in a square."""
         
+        print("Starting the square drive node...")
+        time.sleep(1)
+
         # loop through 4 sets of (x, y) waypoints
         for i in range(4):
             self.target_x = self.x_waypoint[i]
