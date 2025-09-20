@@ -22,7 +22,8 @@ setup(
         'console_scripts': [
             'teleop = robobehaviors_fsm.teleop:main',
             'rviz_tutorial = robobehaviors_fsm.rviz_tutorial:main',
-            'drive_square = robobehaviors_fsm.drive_square:main'
+            'drive_square = robobehaviors_fsm.drive_square:main',
+            'wall_follower = robobehaviors_fsm.wall_follower:main'
         ],
     },
 )
