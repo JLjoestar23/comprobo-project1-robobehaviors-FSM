@@ -18,10 +18,10 @@ class WallFollowerNode(Node):
         super().__init__('wall_follower')
 
         # control parameters, constants for distance and angle
-        self.desired_distance = 0.3
+        self.desired_distance = 0.1
         self.k_d = 1.0
         self.k_a = 2.0
-        self.v0 = 0.3
+        self.v0 = 0.15
 
         # lidar window to look for the wall
         self.window_width = math.radians(40)
