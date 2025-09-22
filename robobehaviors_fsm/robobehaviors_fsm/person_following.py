@@ -84,8 +84,7 @@ class PersonFollowing(Node):
 
             self.publish_debug_waypoint()
 
-            
-            #print([self.target_x, self.target_y]) # debugging purposes
+            print(f"Target Waypoint: {[self.target_x, self.target_y]}") # debugging purposes
 
             # calculate euclidian distance between target and current position
             # once before starting combined driving phase (distance error)
@@ -112,8 +111,8 @@ class PersonFollowing(Node):
                 #         self.velocity.angular.z = self.heading_error
                 #         self.cmd_vel_publisher.publish(self.velocity)
 
-                self.velocity.angular.z = self.heading_error
-                self.velocity.linear.x = 0.2 * self.euclidian_distance
+                self.velocity.angular.z = 1.5 * self.heading_error
+                self.velocity.linear.x = min(0.3, 1.5 * self.euclidian_distance)
                 self.cmd_vel_publisher.publish(self.velocity)
             
             # set all velocity to 0 once combined driving phase is finished

@@ -52,7 +52,7 @@ class DriveSquare(Node):
             self.target_x = self.x_waypoint[i]
             self.target_y = self.y_waypoint[i]
 
-            #print([self.target_x, self.target_y]) # debugging purposes
+            print(f"Target Waypoint: {[self.target_x, self.target_y]}") # debugging purposes
 
             # calculate target heading for the turn phase
             self.calc_target_heading()
@@ -89,8 +89,8 @@ class DriveSquare(Node):
                 self.calc_target_heading()
                 self.calc_euclidian_distance()
                 self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
-                self.velocity.linear.x = 0.5 * self.euclidian_distance
-                self.velocity.angular.z = 0.5 * self.heading_error
+                self.velocity.linear.x = min(0.3, 1.5 * self.euclidian_distance)
+                self.velocity.angular.z = 1.5 * self.heading_error
                 self.publisher.publish(self.velocity)
             
             # set all velocity to 0 once combined driving phase is finished
