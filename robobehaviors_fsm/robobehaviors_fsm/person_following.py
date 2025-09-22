@@ -84,41 +84,41 @@ class PersonFollowing(Node):
 
             self.publish_debug_waypoint()
 
-            print(f"Target Waypoint: {[self.target_x, self.target_y]}") # debugging purposes
+            # print(f"Target Waypoint: {[self.target_x, self.target_y]}") # debugging purposes
 
-            # calculate euclidian distance between target and current position
-            # once before starting combined driving phase (distance error)
-            self.calc_euclidian_distance()
+            # # calculate euclidian distance between target and current position
+            # # once before starting combined driving phase (distance error)
+            # self.calc_euclidian_distance()
 
-            # while the distance error is above the error threshold, use
-            # proportional control to command both linear and angular
-            # velocity in the direction of error
-            # linear velocity is proportional to distance error, while
-            # angular velocity is still proportional to heading error
-            while (abs(self.euclidian_distance) > 0.75):
-                self.calc_target_heading()
-                self.calc_euclidian_distance()
-                self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
+            # # while the distance error is above the error threshold, use
+            # # proportional control to command both linear and angular
+            # # velocity in the direction of error
+            # # linear velocity is proportional to distance error, while
+            # # angular velocity is still proportional to heading error
+            # while (abs(self.euclidian_distance) > 0.75):
+            #     self.calc_target_heading()
+            #     self.calc_euclidian_distance()
+            #     self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
 
-                # if self.heading_error > 0.08:
-                #     while abs(self.heading_error) > 0.005 and self.running:
-                #         # Recalculate heading every loop
-                #         self.calc_target_heading()
-                #         self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
+            #     # if self.heading_error > 0.08:
+            #     #     while abs(self.heading_error) > 0.005 and self.running:
+            #     #         # Recalculate heading every loop
+            #     #         self.calc_target_heading()
+            #     #         self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
 
-                #         # Command angular velocity
-                #         self.velocity.linear.x = 0.0
-                #         self.velocity.angular.z = self.heading_error
-                #         self.cmd_vel_publisher.publish(self.velocity)
+            #     #         # Command angular velocity
+            #     #         self.velocity.linear.x = 0.0
+            #     #         self.velocity.angular.z = self.heading_error
+            #     #         self.cmd_vel_publisher.publish(self.velocity)
 
-                self.velocity.angular.z = 1.5 * self.heading_error
-                self.velocity.linear.x = min(0.3, 1.5 * self.euclidian_distance)
-                self.cmd_vel_publisher.publish(self.velocity)
+            #     self.velocity.angular.z = 1.5 * self.heading_error
+            #     self.velocity.linear.x = min(0.3, 1.5 * self.euclidian_distance)
+            #     self.cmd_vel_publisher.publish(self.velocity)
             
-            # set all velocity to 0 once combined driving phase is finished
-            self.velocity.linear.x = 0.0
-            self.velocity.angular.z = 0.0
-            self.cmd_vel_publisher.publish(self.velocity)
+            # # set all velocity to 0 once combined driving phase is finished
+            # self.velocity.linear.x = 0.0
+            # self.velocity.angular.z = 0.0
+            # self.cmd_vel_publisher.publish(self.velocity)
             
 
     # guidance and navigation related functions
@@ -271,9 +271,7 @@ class PersonFollowing(Node):
         self.neato_frame_point.point.z = 0.0
 
         try:
-            transform = self.tf_buffer.lookup_transform(
-                "odom", "base_laser_link", rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=1.0)
-            )
+            transform = self.tf_buffer.lookup_transform("odom", "base_laser_link", rclpy.time.Time())
             self.odom_frame_point = do_transform_point(self.neato_frame_point, transform)
 
         except Exception as e:
