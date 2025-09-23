@@ -26,7 +26,6 @@ setup(
             'drive_square = robobehaviors_fsm.drive_square:main',
             'wall_follower = robobehaviors_fsm.wall_follower:main',
             'finite_state_controller = robobehaviors_fsm.finite_state_controller:main',
-            'keyboard_estop = robobehaviors_fsm.keyboard_estop:main',
             'bumper_estop = robobehaviors_fsm.bumper_estop:main',
             'person_following = robobehaviors_fsm.person_following:main',
         ],

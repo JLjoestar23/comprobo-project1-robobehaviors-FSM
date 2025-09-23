@@ -4,7 +4,6 @@ from sklearn.linear_model import LinearRegression
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
@@ -52,31 +51,22 @@ class WallFollowerNode(Node):
         self.get_logger().info('WallFollowerNode initialized.')
 
     def _state_cb(self, msg: String):
-        self.get_logger().info("Entered _state_cb")
-        """Update the FSM state"""
         self.current_state = msg.data
-        self.get_logger().info(f"Current FSM state: {self.current_state}")
 
     def _process_scan(self, msg: LaserScan):
-        self.get_logger().info("Entered _process_scan")
-
-        # only follow walls if FSM says so
-        if self.current_state != "wall_following":
-            self.get_logger().info(f"State {self.current_state}, Not in wall_following state, skipping control.")
-            return
-
-        self._detect_and_follow_wall(msg)
-
+        """Always check for wall detection, but only follow if FSM says so"""
         detected = self.detect_wall(msg)
+
+        # Always publish detection
         wall_msg = Bool()
         wall_msg.data = detected
-
-        self.get_logger().info(f"Wall detected: {detected}")
         self.wall_pub.publish(wall_msg)
 
-    def _extract_points(self, msg: LaserScan, theta_min: float, theta_max: float):
-        self.get_logger().info("Entered _extract_points")
+        # Only control if state is wall_following
+        if self.current_state == "wall_following" and detected:
+            self._detect_and_follow_wall(msg)
 
+    def _extract_points(self, msg: LaserScan, theta_min: float, theta_max: float):
         x_coords, y_coords = [], []
         for i, r in enumerate(msg.ranges):
             if r <= 0.0 or r == float('inf'):
@@ -92,8 +82,6 @@ class WallFollowerNode(Node):
         return x_coords, y_coords
 
     def _fit_line(self, x_coords, y_coords):
-        self.get_logger().info("Entered _fit_line")
-
         if len(x_coords) < 2:
             return None, None, None
 
@@ -106,16 +94,12 @@ class WallFollowerNode(Node):
         return float(model.coef_[0]), float(model.intercept_), float(r_sq)
 
     def _publish_cmd(self, v: float, omega: float):
-        self.get_logger().info("Entered _publish_cmd")
-
         cmd = Twist()
         cmd.linear.x = v
         cmd.angular.z = omega
         self.cmd_pub.publish(cmd)
 
     def _detect_and_follow_wall(self, msg: LaserScan):
-        self.get_logger().info("Entered _detect_and_follow_wall")
-
         theta_min = self.window_center - self.window_width / 2
         theta_max = self.window_center + self.window_width / 2
         x_coords, y_coords = self._extract_points(msg, theta_min, theta_max)
@@ -140,15 +124,13 @@ class WallFollowerNode(Node):
             self.window_center = 0.0
             self._publish_cmd(self.v0, 0.0)
 
-    def detect_wall(self, msg: LaserScan, r2_threshold: float = 0.6) -> bool:
-        self.get_logger().info("Entered detect_wall")
-
+    def detect_wall(self, msg: LaserScan, r2_threshold: float = 0.5) -> bool:
         theta_min, theta_max = -math.pi/4, math.pi/4
         x_coords, y_coords = self._extract_points(msg, theta_min, theta_max)
         m, b, r_sq = self._fit_line(x_coords, y_coords)
 
+        self.get_logger().info(f"R2 = {r_sq}")
         if r_sq is not None:
-            self.get_logger().debug(f"Wall detection R^2 = {r_sq:.2f}")
             return r_sq >= r2_threshold
         return False
 

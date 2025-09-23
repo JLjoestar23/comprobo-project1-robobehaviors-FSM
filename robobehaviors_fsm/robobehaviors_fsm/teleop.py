@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Vector3
+from std_msgs.msg import Bool, String
 from threading import Thread
 import tty
 import select
@@ -15,6 +16,12 @@ class Teleop(Node):
         # create a publisher that will set linear and angular velocity
         self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
 
+        # new: create a publisher to toggle teleop mode in fsm
+        self.teleop_pub = self.create_publisher(Bool, "teleop_toggle", 10)
+
+        # new: subscribe to fsm state
+        self.create_subscription(String, "current_state", self.state_cb, 10)
+
         # keylogging variables
         self.settings = termios.tcgetattr(sys.stdin)
         self.key = None
@@ -24,11 +31,16 @@ class Teleop(Node):
         self.x_vel = 0.0
         self.z_angular_vel = 0.0
 
+        # state gating
+        self.fsm_state = ""
+
         # initiate a blocking, timer-based loop
         self.running = True
         self.key_thread = Thread(target=self.teleop_loop)
         self.key_thread.start()
 
+    def state_cb(self, msg):
+        self.fsm_state = msg.data  # store fsm state
 
     def get_key(self):
         """Receive, process, and return the detected keystroke."""
@@ -63,14 +75,17 @@ class Teleop(Node):
             elif self.key == "!": # shutdown the node
                 self.velocity.linear.x = 0.0
                 self.velocity.angular.z = 0.0
-                self.publisher.publish(self.velocity)
+                if self.fsm_state == "teleop":
+                    self.publisher.publish(self.velocity)
                 self.running = False
                 rclpy.shutdown()
+            elif self.key == "t": # toggle teleop mode
+                self.teleop_pub.publish(Bool(data=True))  # send signal to fsm
 
-            # publish velocity commands
-            self.publisher.publish(self.velocity)
-            print("Linear Velocity: " + str(self.velocity.linear.x))
-            print("Angular Velocity: " + str(self.velocity.angular.z))
+            if self.fsm_state == "teleop":
+                self.publisher.publish(self.velocity)
+                print("Linear Velocity: " + str(self.velocity.linear.x))
+                print("Angular Velocity: " + str(self.velocity.angular.z))
 
 
 def main(args=None):

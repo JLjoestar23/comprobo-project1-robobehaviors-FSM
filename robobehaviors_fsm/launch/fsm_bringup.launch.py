@@ -11,11 +11,19 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # wall follower behavior
+        # wall follower 
         Node(
             package='robobehaviors_fsm',
             executable='wall_follower',
             name='wall_follower',
+            output='screen'
+        ),
+        
+        # teleop
+        Node(
+            package='robobehaviors_fsm',
+            executable='teleop',
+            name='teleop',
             output='screen'
         ),
 
@@ -26,22 +34,6 @@ def generate_launch_description():
         #     name='obstacle_avoidance',
         #     output='screen'
         # ),
-
-        # person following behavior
-        Node(
-            package='robobehaviors_fsm',
-            executable='person_following',
-            name='person_following',
-            output='screen'
-        ),
-
-        # keyboard estop
-        Node(
-            package='robobehaviors_fsm',
-            executable='keyboard_estop',
-            name='keyboard_estop',
-            output='screen'
-        ),
 
         # bumper estop
         Node(
