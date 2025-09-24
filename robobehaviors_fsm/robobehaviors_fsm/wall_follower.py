@@ -9,138 +9,168 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
 
 
-def wrap_angle(line_angle: float) -> float:
-    return math.atan2(math.sin(line_angle), math.cos(line_angle))
+def normalize_angle_to_pi(angle):
+    """Wrap angle to stay within -pi and pi range"""
+    return math.atan2(math.sin(angle), math.cos(angle))
 
 
 class WallFollowerNode(Node):
+    """
+    Wall following behavior using LIDAR-based line detection
+    """
+    
     def __init__(self):
         super().__init__('wall_follower')
-        print("Entered __init__")
+        
+        # wall following parameters
+        self.target_wall_distance = 0.1
+        self.distance_gain = 1.0
+        self.angle_gain = 2.0
+        self.base_speed = 0.3
 
-        # control parameters
-        self.desired_distance = 0.1
-        self.k_d = 1.0
-        self.k_a = 2.0
-        self.v0 = 0.3
+        # Lidar processing window
+        self.scan_window_angle = math.radians(40)
+        self.scan_direction = 0.0
 
-        # lidar window for following
-        self.window_width = math.radians(40)
-        self.window_center = 0.0
+        # State tracking
+        self.robot_fsm_state = None
 
-        # track current FSM state
-        self.current_state = None
+        # Ros subscriptions and publishers
+        self.create_subscription(LaserScan, '/scan', self.process_lidar_scan, 10)
+        self.create_subscription(String, '/current_state', self.update_fsm_state, 10)
 
-        # ros things
-        self.create_subscription(
-            LaserScan,
-            '/scan', 
-            self._process_scan,
-            10
-        )
-        self.create_subscription(
-            String,
-            '/current_state',
-            self._state_cb,
-            10
-        )
+        self.velocity_publisher = self.create_publisher(Twist, '/wall_following_cmd', 10)
+        self.wall_detection_publisher = self.create_publisher(Bool, 'wall_detected', 10)
 
-        self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.wall_detected = self.create_publisher(Bool, 'wall_detected', 10)
+        self.get_logger().info('Wall follower node initialized')
 
-        self.get_logger().info('WallFollowerNode initialized.')
+    def update_fsm_state(self, state_msg):
+        """Update current FSM state"""
+        self.robot_fsm_state = state_msg.data
 
-    def _state_cb(self, msg: String):
-        self.current_state = msg.data
+    def process_lidar_scan(self, scan_msg):
+        """
+        main lidar processing
+        """
+        wall_found = self.is_wall_detected(scan_msg)
 
-    def _process_scan(self, msg: LaserScan):
-        """Always check for wall detection, but only follow if FSM says so"""
-        detected = self.detect_wall(msg)
+        # Report wall detection status to fsm
+        detection_msg = Bool()
+        detection_msg.data = wall_found
+        self.wall_detection_publisher.publish(detection_msg)
 
-        # Always publish detection
-        wall_msg = Bool()
-        wall_msg.data = detected
-        self.wall_detected.publish(wall_msg)
+        # only control robot if in wall_following state
+        if self.robot_fsm_state == "wall_following" and wall_found:
+            self.follow_detected_wall(scan_msg)
 
-        # Only control if state is wall_following
-        if self.current_state == "wall_following" and detected:
-            self._detect_and_follow_wall(msg)
-
-    def _extract_points(self, msg: LaserScan, theta_min: float, theta_max: float):
-        x_coords, y_coords = [], []
-        for i, r in enumerate(msg.ranges):
-            if r <= 0.0 or r == float('inf'):
+    def extract_scan_points(self, scan_msg, min_angle, max_angle):
+        """
+        Extract valid lidar points within specified angular range
+        """
+        x_points, y_points = [], []
+        
+        for i, range_value in enumerate(scan_msg.ranges):
+            if range_value <= 0.0 or range_value == float('inf'):
                 continue
 
-            theta = msg.angle_min + i * msg.angle_increment - math.pi
-            theta = wrap_angle(theta)
+            point_angle = scan_msg.angle_min + i * scan_msg.angle_increment - math.pi
+            point_angle = normalize_angle_to_pi(point_angle)
 
-            if theta_min <= theta <= theta_max:
-                x_coords.append(r * math.cos(theta))
-                y_coords.append(r * math.sin(theta))
+            if min_angle <= point_angle <= max_angle:
+                x_points.append(range_value * math.cos(point_angle))
+                y_points.append(range_value * math.sin(point_angle))
 
-        return x_coords, y_coords
+        return x_points, y_points
 
-    def _fit_line(self, x_coords, y_coords):
+    def fit_line_to_points(self, x_coords, y_coords):
+        """
+        fit regression line through lidar points
+        """
         if len(x_coords) < 2:
             return None, None, None
 
-        x = np.array(x_coords).reshape((-1, 1))
-        y = np.array(y_coords)
+        x_array = np.array(x_coords).reshape((-1, 1))
+        y_array = np.array(y_coords)
 
-        model = LinearRegression()
-        model.fit(x, y)
-        r_sq = model.score(x, y)
-        return float(model.coef_[0]), float(model.intercept_), float(r_sq)
+        line_model = LinearRegression()
+        line_model.fit(x_array, y_array)
+        
+        fit_quality = line_model.score(x_array, y_array)
+        
+        return float(line_model.coef_[0]), float(line_model.intercept_), float(fit_quality)
 
-    def _publish_cmd(self, v: float, omega: float):
-        cmd = Twist()
-        cmd.linear.x = v
-        cmd.angular.z = omega
-        self.cmd_pub.publish(cmd)
+    def send_velocity_command(self, linear_speed, angular_speed):
+        """Publish velocity command to robot"""
+        velocity_cmd = Twist()
+        velocity_cmd.linear.x = linear_speed
+        velocity_cmd.angular.z = angular_speed
+        self.velocity_publisher.publish(velocity_cmd)
 
-    def _detect_and_follow_wall(self, msg: LaserScan):
-        theta_min = self.window_center - self.window_width / 2
-        theta_max = self.window_center + self.window_width / 2
-        x_coords, y_coords = self._extract_points(msg, theta_min, theta_max)
+    def follow_detected_wall(self, scan_msg):
+        """
+        Core wall following algorithm
+        """
+        window_min = self.scan_direction - self.scan_window_angle / 2
+        window_max = self.scan_direction + self.scan_window_angle / 2
+        
+        x_coords, y_coords = self.extract_scan_points(scan_msg, window_min, window_max)
 
-        m, b, r_sq = self._fit_line(x_coords, y_coords)
-        if m is not None:
-            dist = abs(b) / math.sqrt(m**2 + 1)
-            line_angle = math.atan(m)
+        slope, intercept, fit_quality = self.fit_line_to_points(x_coords, y_coords)
+        
+        if slope is not None:
+            # Calculate distance and angle from wall
+            wall_distance = abs(intercept) / math.sqrt(slope**2 + 1)
+            wall_angle = math.atan(slope)
 
-            mean_x, mean_y = float(np.mean(x_coords)), float(np.mean(y_coords))
-            bearing = math.atan2(mean_y, mean_x)
+            avg_x = float(np.mean(x_coords))
+            avg_y = float(np.mean(y_coords))
+            bearing_to_wall = math.atan2(avg_y, avg_x)
 
-            diff = wrap_angle(bearing - line_angle)
-            self.window_center = wrap_angle(line_angle + math.copysign(math.pi/2, math.sin(diff)))
+            angle_difference = normalize_angle_to_pi(bearing_to_wall - wall_angle)
+            self.scan_direction = normalize_angle_to_pi(
+                wall_angle + math.copysign(math.pi/2, math.sin(angle_difference))
+            )
 
-            e_dist = self.desired_distance - dist
-            e_angle = line_angle
-            omega = self.k_d * e_dist + self.k_a * e_angle
+            distance_error = self.target_wall_distance - wall_distance
+            angle_error = wall_angle
 
-            self._publish_cmd(self.v0, omega)
+            angular_velocity = self.distance_gain * distance_error + self.angle_gain * angle_error
+
+            self.send_velocity_command(self.base_speed, angular_velocity)
         else:
-            self.window_center = 0.0
-            self._publish_cmd(self.v0, 0.0)
+            # No wall detected - reset scan direction
+            self.scan_direction = 0.0
+            self.send_velocity_command(self.base_speed, 0.0)
 
-    def detect_wall(self, msg: LaserScan, r2_threshold: float = 0.5) -> bool:
-        theta_min, theta_max = -math.pi/4, math.pi/4
-        x_coords, y_coords = self._extract_points(msg, theta_min, theta_max)
-        m, b, r_sq = self._fit_line(x_coords, y_coords)
+    def is_wall_detected(self, scan_msg, quality_threshold=0.5):
+        """
+        check if a wall is present in front of robot
+        """
+        forward_min_angle = -math.pi/4
+        forward_max_angle = math.pi/4
+        
+        x_coords, y_coords = self.extract_scan_points(scan_msg, forward_min_angle, forward_max_angle)
+        _, _, fit_quality = self.fit_line_to_points(x_coords, y_coords)
 
-        #self.get_logger().info(f"R2 = {r_sq}")
-        if r_sq is not None:
-            return r_sq >= r2_threshold
+        if fit_quality is not None:
+            return fit_quality >= quality_threshold
         return False
 
 
 def main(args=None):
+    """
+    Entry point for wall follower node
+    """
     rclpy.init(args=args)
-    node = WallFollowerNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    
+    try:
+        wall_follower = WallFollowerNode()
+        rclpy.spin(wall_follower)
+    except KeyboardInterrupt:
+        print("Wall follower node interrupted")
+    finally:
+        wall_follower.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

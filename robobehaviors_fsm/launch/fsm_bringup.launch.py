@@ -19,7 +19,7 @@ def generate_launch_description():
             output='screen'
         ),
         
-        # teleop
+        # teleop (run separately for keyboard input)
         #Node(
         #    package='robobehaviors_fsm',
         #    executable='teleop',
