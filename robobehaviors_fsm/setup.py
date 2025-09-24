@@ -28,6 +28,7 @@ setup(
             'finite_state_controller = robobehaviors_fsm.finite_state_controller:main',
             'bumper_estop = robobehaviors_fsm.bumper_estop:main',
             'person_following = robobehaviors_fsm.person_following:main',
+            'obstacle_avoidance = robobehaviors_fsm.obstacle_avoidance:main'
         ],
     },
 )
