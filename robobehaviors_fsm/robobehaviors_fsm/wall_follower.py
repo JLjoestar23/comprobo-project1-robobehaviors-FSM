@@ -46,7 +46,7 @@ class WallFollowerNode(Node):
         )
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.wall_pub = self.create_publisher(Bool, 'wall_detected', 10)
+        self.wall_detected = self.create_publisher(Bool, 'wall_detected', 10)
 
         self.get_logger().info('WallFollowerNode initialized.')
 
@@ -60,7 +60,7 @@ class WallFollowerNode(Node):
         # Always publish detection
         wall_msg = Bool()
         wall_msg.data = detected
-        self.wall_pub.publish(wall_msg)
+        self.wall_detected.publish(wall_msg)
 
         # Only control if state is wall_following
         if self.current_state == "wall_following" and detected:
@@ -129,7 +129,7 @@ class WallFollowerNode(Node):
         x_coords, y_coords = self._extract_points(msg, theta_min, theta_max)
         m, b, r_sq = self._fit_line(x_coords, y_coords)
 
-        self.get_logger().info(f"R2 = {r_sq}")
+        #self.get_logger().info(f"R2 = {r_sq}")
         if r_sq is not None:
             return r_sq >= r2_threshold
         return False
