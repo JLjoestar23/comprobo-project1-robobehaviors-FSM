@@ -20,20 +20,20 @@ def generate_launch_description():
         ),
         
         # teleop
+        #Node(
+        #    package='robobehaviors_fsm',
+        #    executable='teleop',
+        #    name='teleop',
+        #    output='screen'
+        #),
+
+        # obstacle avoidance behavior
         Node(
             package='robobehaviors_fsm',
-            executable='teleop',
-            name='teleop',
+            executable='obstacle_avoidance',
+            name='obstacle_avoidance',
             output='screen'
         ),
-
-        # # obstacle avoidance behavior
-        # Node(
-        #     package='robobehaviors_fsm',
-        #     executable='obstacle_avoidance',
-        #     name='obstacle_avoidance',
-        #     output='screen'
-        # ),
 
         # bumper estop
         Node(
