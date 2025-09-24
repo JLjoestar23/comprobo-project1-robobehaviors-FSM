@@ -33,6 +33,8 @@ class Teleop(Node):
 
         # state gating
         self.fsm_state = ""
+        self.teleop_toggle = False
+
 
         # initiate a blocking, timer-based loop
         self.running = True
@@ -52,37 +54,45 @@ class Teleop(Node):
     
     def teleop_loop(self):
         """Main loop that allows drive control depending with the keyboard."""
+
+        self.velocity.linear.x = 0.0
+        self.velocity.angular.z = 0.0
+        self.publisher.publish(self.velocity)
+
         while self.running:
             # get the key stroke
             self.key = self.get_key()
             print(self.key)
 
-            if self.key == "w": # increment linear velocity forward
-                self.velocity.linear.x = round(self.velocity.linear.x + 0.1, 1)
-            elif self.key == "s": # increment linear velocity reverse
-                self.velocity.linear.x = round(self.velocity.linear.x - 0.1, 1)
-            elif self.key == "a": # increment angular velocity left
-                self.velocity.angular.z = round(self.velocity.angular.z + 0.5, 1)
-            elif self.key == "d": # increment angular velocity right
-                self.velocity.angular.z = round(self.velocity.angular.z - 0.5, 1)
-            elif self.key == "e": # angular velocity stop
-                self.velocity.angular.z = 0.0
-            elif self.key == "q": # linear velocity stop
-                self.velocity.linear.x = 0.0
-            elif self.key == " ": # both stop
-                self.velocity.linear.x = 0.0
-                self.velocity.angular.z = 0.0
-            elif self.key == "!": # shutdown the node
-                self.velocity.linear.x = 0.0
-                self.velocity.angular.z = 0.0
-                if self.fsm_state == "teleop":
-                    self.publisher.publish(self.velocity)
-                self.running = False
-                rclpy.shutdown()
-            elif self.key == "t": # toggle teleop mode
-                self.teleop_pub.publish(Bool(data=True))  # send signal to fsm
+            # Toggle teleop mode
+            if self.key == "t" and (self.fsm_state != "wall_following" or self.fsm_state != "estop" ): # toggle teleop mode
+                self.teleop_toggle = not self.teleop_toggle
+                self.teleop_pub.publish(Bool(data=(self.teleop_toggle)))  # send signal to fsm
 
             if self.fsm_state == "teleop":
+                if self.key == "w": # increment linear velocity forward
+                    self.velocity.linear.x = round(self.velocity.linear.x + 0.1, 1)
+                elif self.key == "s": # increment linear velocity reverse
+                    self.velocity.linear.x = round(self.velocity.linear.x - 0.1, 1)
+                elif self.key == "a": # increment angular velocity left
+                    self.velocity.angular.z = round(self.velocity.angular.z + 0.5, 1)
+                elif self.key == "d": # increment angular velocity right
+                    self.velocity.angular.z = round(self.velocity.angular.z - 0.5, 1)
+                elif self.key == "e": # angular velocity stop
+                    self.velocity.angular.z = 0.0
+                elif self.key == "q": # linear velocity stop
+                    self.velocity.linear.x = 0.0
+                elif self.key == " ": # both stop
+                    self.velocity.linear.x = 0.0
+                    self.velocity.angular.z = 0.0
+                elif self.key == "!": # shutdown the node
+                    self.velocity.linear.x = 0.0
+                    self.velocity.angular.z = 0.0
+                    if self.fsm_state == "teleop":
+                        self.publisher.publish(self.velocity)
+                    self.running = False
+                    rclpy.shutdown()
+
                 self.publisher.publish(self.velocity)
                 print("Linear Velocity: " + str(self.velocity.linear.x))
                 print("Angular Velocity: " + str(self.velocity.angular.z))
