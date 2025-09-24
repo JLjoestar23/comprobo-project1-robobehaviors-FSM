@@ -9,6 +9,7 @@ from tf2_geometry_msgs import do_transform_point
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from visualization_msgs.msg import Marker
+from std_msgs.msg import Bool, String
 from threading import Thread
 import math
 import time
@@ -25,10 +26,12 @@ class ObstacleAvoidance(Node):
         # Publishers
         self.cmd_vel_publisher = self.create_publisher(Twist, "/cmd_vel", 10)  # for motion control
         self.marker_publisher = self.create_publisher(Marker, "/visualization_marker", 10)  # for RViz debugging
+        self.target_reached_publisher = self.create_publisher(Bool, "/target_reached", 10) # publish if it has reached target waypoint
 
         # Subscribers
         self.odom = self.create_subscription(Odometry, "/odom", self.process_pose, 10)  # get current position
-        self.subscriber = self.create_subscription(LaserScan, "/scan", self.potential_field_control, qos_profile=qos_profile_sensor_data)  # get LIDAR data
+        self.scan_subscription = self.create_subscription(LaserScan, "/scan", self.potential_field_control, qos_profile=qos_profile_sensor_data)  # get LIDAR data
+        self.create_subscription(String, "current_state", self.state_cb, 10)
 
         # Velocity
         self.velocity = Twist()
@@ -45,7 +48,7 @@ class ObstacleAvoidance(Node):
         self.current_heading = 0.0
         self.target_heading = 0.0
         self.heading_error = 0.0
-        self.euclidian_distance = 0.0
+        self.distance_to_goal = 0.0
 
         # Orientation (quaternion)
         self.q = None
@@ -53,26 +56,50 @@ class ObstacleAvoidance(Node):
         # Visualization for debugging
         self.marker = Marker()
 
+        # state gating
+        self.fsm_state = ""
+        self.target_reached = Bool()
+        self.target_reached.data = False
+
         # Thread for main control loop
         self.running = True
         self.main_thread = Thread(target=self.main_loop)
         self.main_thread.start()
+        self.get_logger().info('ObstacleAvoidanceNode initialized.')
 
     
     def main_loop(self):
         """
         Main loop that deals with navigation and control to drive a Neato in a square.
         """
-        print("Starting the obstacle avoidance node...")
-        time.sleep(1)
+        #print("Starting the obstacle avoidance node...")
+        #time.sleep(1)
 
+        # set target waypoint
         self.target_x = 4.0
         self.target_y = 0.0
 
         while self.running:
-            self.velocity.linear.x = self.total_repulsion_lin_vel
-            self.velocity.angular.z = self.total_repulsion_ang_vel
-            self.cmd_vel_publisher.publish(self.velocity)
+
+            #self.get_logger().info(self.fsm_state)
+
+            if self.fsm_state == "obstacle_avoidance":
+                # control loop until a certain distance threshold is reached
+                #self.get_logger().info(f"Inside if statement")
+                if self.distance_to_goal >= 0.1:
+                    self.target_reached.data = False
+                    self.target_reached_publisher.publish(self.target_reached)
+                    self.velocity.linear.x = self.total_repulsion_lin_vel
+                    self.velocity.angular.z = self.total_repulsion_ang_vel
+                    self.cmd_vel_publisher.publish(self.velocity)
+                elif self.distance_to_goal < 0.1:
+                    # once within a certain distance threshold, update target reached status
+                    self.velocity.linear.x = 0.0
+                    self.velocity.angular.z = 0.0
+                    self.cmd_vel_publisher.publish(self.velocity)
+                    self.target_reached.data = True
+                    self.target_reached_publisher.publish(self.target_reached)
+
 
     # guidance and navigation related functions
     def process_pose(self, data):
@@ -108,67 +135,67 @@ class ObstacleAvoidance(Node):
         Combines attractive and repulsive vector fields using LIDAR and target pose.
         Outputs total linear and angular velocity components to steer robot.
         """
+        if self.fsm_state == "obstacle_avoidance":
+            # Constants
+            attraction_gain = 1.0
+            repulsion_gain = 0.1
+            influence_radius = 0.75  # meters
+            min_obstacle_dist = 0.05  # avoid division by near-zero
 
-        # Constants
-        attraction_gain = 1.0
-        repulsion_gain = 0.1
-        influence_radius = 0.75  # meters
-        min_obstacle_dist = 0.05  # avoid division by near-zero
+            # Attractive force towards goal
+            dx = self.target_x - self.current_x
+            dy = self.target_y - self.current_y
+            self.distance_to_goal = math.hypot(dx, dy)
 
-        # Attractive force towards goal
-        dx = self.target_x - self.current_x
-        dy = self.target_y - self.current_y
-        distance_to_goal = math.hypot(dx, dy)
+            # Unit vector to goal
+            if self.distance_to_goal > 0.1:
+                fx_total = attraction_gain * dx / self.distance_to_goal
+                fy_total = attraction_gain * dy / self.distance_to_goal
+            else:
+                fx_total = 0.0
+                fy_total = 0.0
 
-        # Unit vector to goal
-        if distance_to_goal > 0.1:
-            fx_total = attraction_gain * dx / distance_to_goal
-            fy_total = attraction_gain * dy / distance_to_goal
-        else:
-            fx_total = 0.0
-            fy_total = 0.0
+            # Repulsive forces from LIDAR
+            angle = scan.angle_min
+            for r in scan.ranges:
+                if r == 0.0 or math.isinf(r) or r > influence_radius:
+                    angle += scan.angle_increment
+                    continue
 
-        # Repulsive forces from LIDAR
-        angle = scan.angle_min
-        for r in scan.ranges:
-            if r == 0.0 or math.isinf(r) or r > influence_radius:
+                # Obstacle position in robot frame
+                obs_x = r * math.cos(angle)
+                obs_y = r * math.sin(angle)
+
+                dist = math.hypot(obs_x, obs_y)
+                if dist < min_obstacle_dist:
+                    dist = min_obstacle_dist  # prevent division errors
+
+                # Unit vector from obstacle to robot
+                rep_x = obs_x / dist
+                rep_y = obs_y / dist
+
+                # Scale repulsion force (decays with distance)
+                strength = repulsion_gain * (1.0 / dist - 1.0 / influence_radius)
+                strength = max(0.0, strength)  # only repel if within influence
+                fx_total += strength * rep_x
+                fy_total += strength * rep_y
+
                 angle += scan.angle_increment
-                continue
 
-            # Obstacle position in robot frame
-            obs_x = r * math.cos(angle)
-            obs_y = r * math.sin(angle)
+            # Convert combined force to heading and speed
+            angle_to_move = math.atan2(fy_total, fx_total)
+            speed = min(0.3, math.hypot(fx_total, fy_total))
 
-            dist = math.hypot(obs_x, obs_y)
-            if dist < min_obstacle_dist:
-                dist = min_obstacle_dist  # prevent division errors
+            # Convert angle difference to angular velocity
+            heading_error = self.normalize_angle(angle_to_move - self.current_heading)
+            angular_velocity = 1.5 * heading_error  # simple proportional controller
 
-            # Unit vector from obstacle to robot
-            rep_x = obs_x / dist
-            rep_y = obs_y / dist
+            # Store for use in main loop
+            self.total_repulsion_lin_vel = speed
+            self.total_repulsion_ang_vel = angular_velocity
 
-            # Scale repulsion force (decays with distance)
-            strength = repulsion_gain * (1.0 / dist - 1.0 / influence_radius)
-            strength = max(0.0, strength)  # only repel if within influence
-            fx_total += strength * rep_x
-            fy_total += strength * rep_y
-
-            angle += scan.angle_increment
-
-        # Convert combined force to heading and speed
-        angle_to_move = math.atan2(fy_total, fx_total)
-        speed = min(0.3, math.hypot(fx_total, fy_total))
-
-        # Convert angle difference to angular velocity
-        heading_error = self.normalize_angle(angle_to_move - self.current_heading)
-        angular_velocity = 1.5 * heading_error  # simple proportional controller
-
-        # Store for use in main loop
-        self.total_repulsion_lin_vel = speed
-        self.total_repulsion_ang_vel = angular_velocity
-
-        # Debug print
-        print(f"Speed: {speed:.3f}, Angular: {angular_velocity:.3f}, Heading error: {heading_error:.3f}")
+            # Debug print
+            #self.get_logger().info(f"Speed: {speed:.3f}, Angular: {angular_velocity:.3f}, Heading error: {heading_error:.3f}")
 
     def publish_debug_waypoint(self):
         """
@@ -201,6 +228,10 @@ class ObstacleAvoidance(Node):
 
         # publish marker
         self.marker_publisher.publish(self.marker)
+
+    def state_cb(self, msg):
+        self.fsm_state = msg.data  # store fsm state
+        #self.get_logger().info(self.fsm_state)
 
 def main(args=None):
     rclpy.init(args=args)
