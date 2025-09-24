@@ -21,9 +21,9 @@ class BumperEstop(Node):
     def bumper_cb(self, msg: Bump):
         # check bumper sensors
         bumped = bool(msg.left_front) or bool(msg.left_side) or bool(msg.right_front) or bool(msg.right_side)
-        self.get_logger().info(
-            f"bumper values -> LF:{msg.left_front}, LS:{msg.left_side}, RF:{msg.right_front}, RS:{msg.right_side}"
-        )
+        #self.get_logger().info(
+        #    f"bumper values -> LF:{msg.left_front}, LS:{msg.left_side}, RF:{msg.right_front}, RS:{msg.right_side}"
+        #)
 
         # publish estop signal
         estop_msg = Bool()
@@ -35,8 +35,8 @@ class BumperEstop(Node):
             stop = Twist()
             self.cmd_pub.publish(stop)
             self.get_logger().warn("!!! bumper estop activated -> stopping robot !!!")
-        else:
-            self.get_logger().info("bumper estop cleared")
+        #else:
+            #self.get_logger().info("bumper estop cleared")
 
 
 def main(args=None):

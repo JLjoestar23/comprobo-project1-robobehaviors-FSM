@@ -15,36 +15,59 @@ class FiniteStateController(Node):
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)  # NEW
 
         # subscribers for triggers
-        self.create_subscription(Bool, 'wall_detected', self.wall_sub_cb, 10)
-        self.create_subscription(Bool, 'estop', self.estop_sub_cb, 10)
-        self.create_subscription(Bool, 'teleop_toggle', self.teleop_sub_cb, 10)  # listen for teleop key
+        self.create_subscription(Bool, "/wall_detected", self.wall_sub_cb, 10)
+        self.create_subscription(Bool, "/estop", self.estop_sub_cb, 10)
+        self.create_subscription(Bool, "/teleop_toggle", self.teleop_sub_cb, 10)  # listen for teleop key
+        self.create_subscription(Bool, "/target_reached", self.obstacle_avoidance_cb, 10)
+
+        # conditions for each state
+        self.wall_detected = None
+        self.estop = None
+        self.teleop_toggle = None
+        self.target_reached = None
 
         # initial state
-        self.current_state = "wall_following"
+        # "obstacle_avoidance", "wall_following", "teleop", "estop"
+        self.current_state = "obstacle_avoidance"
         self.publish_state()
         
-        self.timer = self.create_timer(1.0, self.loop_cb)
+        self.timer = self.create_timer(0.1, self.evaluate_state)
 
-    def loop_cb(self):
+    def evaluate_state(self):
         """periodic loop to publish state"""
-        msg = String()
-        msg.data = self.current_state
-        self.state_pub.publish(msg)
+        
+        if self.estop:
+            self.current_state = "estop"
 
-        # continuously enforce stop if in estop
-        if self.current_state == "estop":
-            self.publish_zero_velocity()
+        match self.current_state:
+            case "obstacle_avoidance":
+                if self.target_reached and self.wall_detected:
+                    self.current_state = "wall_following"
+                    print(self.current_state)
+            case "wall_following":
+                if self.teleop_toggle:
+                    self.current_state = "teleop"
+                    self.publish_zero_velocity()
+                    print(self.current_state)
+            case "teleop":
+                if not self.teleop_toggle and not self.estop:
+                    self.current_state = "wall_following"
+                    self.publish_zero_velocity()
+                    print(self.current_state)
+            case "estop":
+                self.publish_zero_velocity()
+                if not self.estop and self.teleop_toggle:
+                    self.current_state = "teleop"
+                    print(self.current_state)
+
+        self.publish_state()
 
     def publish_state(self):
         """publish the current fsm state"""
         msg = String()
         msg.data = self.current_state
         self.state_pub.publish(msg)
-        self.get_logger().info(f"Publishing, current state: {self.current_state}")
-
-        # immediately stop robot if estop
-        if self.current_state == "estop":
-            self.publish_zero_velocity()
+        #self.get_logger().info(f"Publishing, current state: {self.current_state}")
 
     def publish_zero_velocity(self):
         """publish a Twist with all zeros to stop the robot"""
@@ -52,44 +75,20 @@ class FiniteStateController(Node):
         self.cmd_pub.publish(stop_msg)
         self.get_logger().warn("!!! publishing zero velocity command !!!")
 
+    def obstacle_avoidance_cb(self, msg: Bool):
+        self.target_reached = msg.data
+
     def wall_sub_cb(self, msg: Bool):
         """handle wall detection events"""
-        if self.current_state == "estop":
-            return
-
-        wall_detected = msg.data
-
-        if wall_detected:
-            self.current_state = "wall_following"
-            self.publish_state()
-            self.get_logger().info("transitioned to wall following state")
-
-        elif not wall_detected and self.current_state == "wall_following":
-            self.publish_state()
-            self.get_logger().info("wall lost, back to obstacle avoidance state")
+        self.wall_detected = msg.data
 
     def estop_sub_cb(self, msg: Bool):
         """handle estop events from bumper or keyboard"""
-        estop_triggered = msg.data
-
-        if estop_triggered and self.current_state != "estop":
-            self.current_state = "estop"
-            self.publish_state()
-            self.get_logger().warn("!!! emergency stop activated !!!")
-
-        elif not estop_triggered and self.current_state == "estop":
-            self.current_state = "obstacle_avoidance"
-            self.publish_state()
-            self.get_logger().info("estop cleared, back to obstacle avoidance state")
+        self.estop = msg.data
 
     def teleop_sub_cb(self, msg: Bool):
         """handle teleop mode request from keypress"""
-        teleop_requested = msg.data
-
-        if teleop_requested and self.current_state != "estop":
-            self.current_state = "teleop"
-            self.publish_state()
-            self.get_logger().info("transitioned to teleop state")
+        self.teleop_toggle = msg.data
 
 
 def main(args=None):
