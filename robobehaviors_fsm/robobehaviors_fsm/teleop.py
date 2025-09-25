@@ -78,8 +78,10 @@ class TeleopController(Node):
         print("  t     - Toggle teleop mode")
         print("  w/s   - Forward/backward")  
         print("  a/d   - Turn left/right")
+        print("  q     - Stop linear motion only")
+        print("  e     - Stop rotation only")
         print("  space - Stop all movement")
-        print("  q     - Quit teleop")
+        print("  Ctrl+C- Quit teleop")
         print("\nTerminal is in raw mode - keys work immediately!")
         print("Current state: Waiting for FSM connection...")
         print("-"*50)
@@ -111,11 +113,10 @@ class TeleopController(Node):
 
     def process_keypress(self, key):
         """Handle individual key presses"""
-        # Always show what key was pressed and current state
         print(f"Key: '{key}' | Robot: {self.robot_state:12s}", end=" | ")
         
-        # Toggle teleop mode (works in any state except estop for exit)
         if key == "t":
+            # Toggle teleop mode
             self.teleop_mode_active = not self.teleop_mode_active
             toggle_msg = Bool()
             toggle_msg.data = self.teleop_mode_active
@@ -125,7 +126,6 @@ class TeleopController(Node):
             print(f"Teleop: {status}")
             return
 
-        # Movement commands only work in teleop state
         if self.robot_state == "teleop":
             self.handle_movement_command(key)
         else:
@@ -147,14 +147,10 @@ class TeleopController(Node):
             case " ":
                 self.linear_speed = 0.0
                 self.angular_speed = 0.0
-            case "q":
+            case "q":  # stop linear motion only
                 self.linear_speed = 0.0
+            case "e":  # stop rotation only
                 self.angular_speed = 0.0
-                self.send_velocity_command()
-                print("Shutting down teleop...")
-                self.keep_running = False
-                self.shutdown_requested.set()
-                return
             case _:
                 movement_made = False
 
@@ -166,7 +162,6 @@ class TeleopController(Node):
         else:
             print("(Unknown key)")
 
-
     def send_velocity_command(self):
         """Publish current velocity to robot"""
         self.current_velocity.linear.x = float(self.linear_speed)
@@ -175,19 +170,14 @@ class TeleopController(Node):
 
 
 def main(args=None):
-    """
-    Main entry point for teleop controller
-    """
     rclpy.init(args=args)
     
     try:
         teleop_node = TeleopController()
         
-        # Keep ROS spinning while keyboard thread handles input
         while rclpy.ok() and teleop_node.keep_running:
             rclpy.spin_once(teleop_node, timeout_sec=0.1)
         
-        # Clean shutdown
         teleop_node.destroy_node()
         
     except KeyboardInterrupt:

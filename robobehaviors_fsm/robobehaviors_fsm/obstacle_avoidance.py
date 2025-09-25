@@ -14,249 +14,203 @@ from threading import Thread
 import math
 import time
 
-
 class ObstacleAvoidance(Node):
     """
-    A ROS2 Node that enables a Neato robot to follow a person or object by using LIDAR data to detect an obstacle in front and generate a waypoint a fixed distance away from it.
+    A ROS2 Node that enables a Neato robot to follow a person or object by using LIDAR data
+    to detect an obstacle in front and generate a waypoint a fixed distance away from it.
     The detected obstacle's position is transformed to the 'odom' frame and visualized in RViz.
-
-    Robot navigation using potential fields approach.
     """
-    
     def __init__(self):
         super().__init__('obstacle_avoidance')
 
-        # velocity and other command publishers
-        self.velocity_publisher = self.create_publisher(Twist, "/obstacle_avoidance_cmd", 10)
-        self.marker_publisher = self.create_publisher(Marker, "/visualization_marker", 10)
-        self.target_reached_publisher = self.create_publisher(Bool, "/target_reached", 10)
+        # Publishers
+        self.velocity_publisher = self.create_publisher(Twist, "/obstacle_avoidance_cmd", 10)  # changed from /cmd_vel
+        self.marker_publisher = self.create_publisher(Marker, "/visualization_marker", 10)  # for RViz debugging
+        self.target_reached_publisher = self.create_publisher(Bool, "/target_reached", 10) # publish if it has reached target waypoint
 
-        # State and sensor subscriptions
-        self.odometry_sub = self.create_subscription(Odometry, "/odom", self.update_robot_position, 10)
-        self.laser_sub = self.create_subscription(LaserScan, "/scan", self.navigate_with_potential_fields, qos_profile=qos_profile_sensor_data)
-        self.create_subscription(String, "current_state", self.update_fsm_state, 10)
+        # Subscribers
+        self.odom = self.create_subscription(Odometry, "/odom", self.process_pose, 10)  # get current position
+        self.scan_subscription = self.create_subscription(LaserScan, "/scan", self.potential_field_control, qos_profile=qos_profile_sensor_data)  # get LIDAR data
+        self.create_subscription(String, "current_state", self.state_cb, 10)
 
-        # Navigation command
-        self.movement_command = Twist()
-        
-        # Current robot state
-        self.robot_x_position = 0.0
-        self.robot_y_position = 0.0
-        self.robot_heading = 0.0
-        
-        # Target waypoint
-        self.waypoint_x = 0.0
-        self.waypoint_y = 0.0
-        self.desired_heading = 0.0
+        # Velocity
+        self.velocity = Twist()
+        self.x_vel = 0.0
+        self.z_angular_vel = 0.0
+        self.total_repulsion_lin_vel = 0.0
+        self.total_repulsion_ang_vel = 0.0
+
+        # Navigation
+        self.target_x = 0.0
+        self.target_y = 0.0
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.current_heading = 0.0
+        self.target_heading = 0.0
         self.heading_error = 0.0
-        self.distance_to_target = 0.0
+        self.distance_to_goal = 0.0
 
-        # Velocity commands from potential field algorithm
-        self.forward_velocity = 0.0
-        self.turning_velocity = 0.0
+        # Orientation (quaternion)
+        self.q = None
 
-        # Robot orientation (quaternion from odometry)  
-        self.orientation_quat = None
+        # Visualization for debugging
+        self.marker = Marker()
 
-        # Debugging visualization
-        self.debug_marker = Marker()
+        # state gating
+        self.fsm_state = ""
+        self.target_reached = Bool()
+        self.target_reached.data = False
 
-        # FSM integration
-        self.current_fsm_state = ""
-        self.goal_reached_status = Bool()
-        self.goal_reached_status.data = False
+        # Thread for main control loop
+        self.running = True
+        self.main_thread = Thread(target=self.main_loop)
+        self.main_thread.start()
+        self.get_logger().info('ObstacleAvoidanceNode initialized.')
 
-        # Navigation control thread
-        self.node_active = True
-        self.navigation_thread = Thread(target=self.navigation_control_loop)
-        self.navigation_thread.start()
-        
-        self.get_logger().info('Obstacle avoidance Node Initialized')
-
-    def navigation_control_loop(self):
+    
+    def main_loop(self):
         """
-        Main navigation loop - drives robot toward waypoint while avoiding obstacles
+        Main loop that deals with navigation and control to drive a Neato in a square.
         """
-        # Initial waypoint, 4 meters in front
-        self.waypoint_x = 4.0
-        self.waypoint_y = 0.0
+        # set target waypoint
+        self.target_x = 4.0
+        self.target_y = 0.0
 
-        while self.node_active:
-            if self.current_fsm_state == "obstacle_avoidance":
-                # Keep moving toward target if not close enough
-                if self.distance_to_target >= 0.1:
-                    self.goal_reached_status.data = False
-                    self.target_reached_publisher.publish(self.goal_reached_status)
-                    
-                    # Publish velocity commands calculated by potential field
-                    self.movement_command.linear.x = self.forward_velocity
-                    self.movement_command.angular.z = self.turning_velocity
-                    self.velocity_publisher.publish(self.movement_command)
-                    
-                else:
-                    # Target reached, stop and signal completion
-                    self.movement_command.linear.x = 0.0
-                    self.movement_command.angular.z = 0.0
-                    self.velocity_publisher.publish(self.movement_command)
-                    
-                    self.goal_reached_status.data = True
-                    self.target_reached_publisher.publish(self.goal_reached_status)
+        while self.running:
+            if self.fsm_state == "obstacle_avoidance":
+                if self.distance_to_goal >= 0.1:
+                    self.target_reached.data = False
+                    self.target_reached_publisher.publish(self.target_reached)
+                    self.velocity.linear.x = self.total_repulsion_lin_vel
+                    self.velocity.angular.z = self.total_repulsion_ang_vel
+                    self.velocity_publisher.publish(self.velocity)  # changed publisher
+                elif self.distance_to_goal < 0.1:
+                    self.velocity.linear.x = 0.0
+                    self.velocity.angular.z = 0.0
+                    self.velocity_publisher.publish(self.velocity)  # changed publisher
+                    self.target_reached.data = True
+                    self.target_reached_publisher.publish(self.target_reached)
 
-    def update_robot_position(self, odometry_msg):
+
+    # guidance and navigation related functions
+    def process_pose(self, data):
         """
-        Process odometry data to track current robot position and heading
-        
-        This is where we calculate distance to target since odometry
-        updates are most frequent and reliable.
+        Extract the robot's current x, y, and heading (yaw) from the /odom topic.
         """
-        self.robot_x_position = odometry_msg.pose.pose.position.x
-        self.robot_y_position = odometry_msg.pose.pose.position.y
-        self.orientation_quat = odometry_msg.pose.pose.orientation
-        self.robot_heading = self.convert_quaternion_to_yaw(self.orientation_quat)
-        
-        # Calculate distance to current waypoint
-        dx = self.waypoint_x - self.robot_x_position
-        dy = self.waypoint_y - self.robot_y_position
-        self.distance_to_target = math.hypot(dx, dy)
+        self.current_x = data.pose.pose.position.x
+        self.current_y = data.pose.pose.position.y
+        self.q = data.pose.pose.orientation
+        self.current_heading = self.euler_yaw_from_quat(self.q)
 
-    def convert_quaternion_to_yaw(self, quat):
-        """Convert quaternion to 2D yaw angle in radians"""
-        return math.atan2(
-            2.0 * (quat.w * quat.z + quat.x * quat.y), 
-            1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z)
-        )
+    def euler_yaw_from_quat(self, q):
+        """
+        Convert quaternion orientation to a 2D yaw value (rads).
+        """
+        return math.atan2(2.0*(q.w*q.z + q.x*q.y), 1.0 - 2.0*(q.y*q.y + q.z*q.z))
     
     def normalize_angle(self, angle):
-        """Keep angle within -π to π range"""
+        """Normalize angle to [-pi, pi]."""
         while angle > math.pi:
             angle -= 2.0 * math.pi
         while angle < -math.pi:
             angle += 2.0 * math.pi
         return angle
     
-    def navigate_with_potential_fields(self, laser_scan):
+    def potential_field_control(self, scan):
         """
-        Core navigation algorithm using attractive and repulsive forces
+        Combines attractive and repulsive vector fields using LIDAR and target pose.
+        Outputs total linear and angular velocity components to steer robot.
         """
-        if self.current_fsm_state != "obstacle_avoidance":
-            return
-            
-        # Tuning parameters for navigation behavior
-        attraction_strength = 1.0
-        repulsion_strength = 0.1
-        obstacle_influence_range = 0.75
-        min_safe_distance = 0.05
+        if self.fsm_state == "obstacle_avoidance":
+            # Constants
+            attraction_gain = 1.0
+            repulsion_gain = 0.1
+            influence_radius = 0.75  # meters
+            min_obstacle_dist = 0.05  # avoid division by near-zero
 
-        # Calculate attractive force toward waypoint
-        displacement_x = self.waypoint_x - self.robot_x_position
-        displacement_y = self.waypoint_y - self.robot_y_position
-        distance_to_waypoint = math.hypot(displacement_x, displacement_y)
+            # Attractive force towards goal
+            dx = self.target_x - self.current_x
+            dy = self.target_y - self.current_y
+            self.distance_to_goal = math.hypot(dx, dy)
 
-        # Create unit vector toward goal
-        if distance_to_waypoint > 0.1:
-            force_x = attraction_strength * displacement_x / distance_to_waypoint
-            force_y = attraction_strength * displacement_y / distance_to_waypoint
-        else:
-            # Already at goal - no attractive force needed
-            force_x = 0.0
-            force_y = 0.0
+            # Unit vector to goal
+            if self.distance_to_goal > 0.1:
+                fx_total = attraction_gain * dx / self.distance_to_goal
+                fy_total = attraction_gain * dy / self.distance_to_goal
+            else:
+                fx_total = 0.0
+                fy_total = 0.0
 
-        # Add repulsive forces from obstacles detected by LIDAR
-        scan_angle = laser_scan.angle_min
-        for range_reading in laser_scan.ranges:
-            # Skip invalid or distant readings
-            if (range_reading == 0.0 or math.isinf(range_reading) or 
-                range_reading > obstacle_influence_range):
-                scan_angle += laser_scan.angle_increment
-                continue
+            # Repulsive forces from LIDAR
+            angle = scan.angle_min
+            for r in scan.ranges:
+                if r == 0.0 or math.isinf(r) or r > influence_radius:
+                    angle += scan.angle_increment
+                    continue
 
-            # Convert polar coordinates to cartesian (robot frame)
-            obstacle_x = range_reading * math.cos(scan_angle)
-            obstacle_y = range_reading * math.sin(scan_angle)
+                # Obstacle position in robot frame
+                obs_x = r * math.cos(angle)
+                obs_y = r * math.sin(angle)
 
-            obstacle_distance = math.hypot(obstacle_x, obstacle_y)
-            if obstacle_distance < min_safe_distance:
-                obstacle_distance = min_safe_distance
+                dist = math.hypot(obs_x, obs_y)
+                if dist < min_obstacle_dist:
+                    dist = min_obstacle_dist
 
-            # Create repulsive force pointing away from obstacle  
-            repulsion_x = -obstacle_x / obstacle_distance
-            repulsion_y = -obstacle_y / obstacle_distance
+                # Unit vector from obstacle to robot
+                rep_x = obs_x / dist
+                rep_y = obs_y / dist
 
-            # Scale force based on proximity (closer = stronger repulsion)
-            force_magnitude = repulsion_strength * (1.0 / obstacle_distance - 1.0 / obstacle_influence_range)
-            force_magnitude = max(0.0, force_magnitude)
-            
-            force_x += force_magnitude * repulsion_x
-            force_y += force_magnitude * repulsion_y
+                # Scale repulsion force (decays with distance)
+                strength = repulsion_gain * (1.0 / dist - 1.0 / influence_radius)
+                strength = max(0.0, strength)
+                fx_total += strength * rep_x
+                fy_total += strength * rep_y
 
-            scan_angle += laser_scan.angle_increment
+                angle += scan.angle_increment
 
-        # Convert combined force vector to robot commands
-        desired_heading = math.atan2(force_y, force_x)
-        desired_speed = min(0.3, math.hypot(force_x, force_y)) 
+            # Convert combined force to heading and speed
+            angle_to_move = math.atan2(fy_total, fx_total)
+            speed = min(0.3, math.hypot(fx_total, fy_total))
 
-        # Calculate heading error and convert to angular velocity
-        heading_error = self.normalize_angle(desired_heading - self.robot_heading)
-        angular_velocity = 1.5 * heading_error
+            # Convert angle difference to angular velocity
+            heading_error = self.normalize_angle(angle_to_move - self.current_heading)
+            angular_velocity = 1.5 * heading_error
 
-        # Store velocities for main control loop to publish
-        self.forward_velocity = desired_speed
-        self.turning_velocity = angular_velocity
+            # Store for use in main loop
+            self.total_repulsion_lin_vel = speed
+            self.total_repulsion_ang_vel = angular_velocity
 
-    def create_waypoint_marker(self):
+    def publish_debug_waypoint(self):
         """
-        Create visualization marker for RViz debugging
+        Publish a green spherical marker at the current target position in the 'odom' frame.
         """
-        # Set up marker properties
-        self.debug_marker.header.frame_id = "odom"
-        self.debug_marker.header.stamp = self.get_clock().now().to_msg()
-        self.debug_marker.ns = "navigation_markers"
-        self.debug_marker.id = 0
+        self.marker.header.frame_id = "odom"
+        self.marker.header.stamp = self.get_clock().now().to_msg()
+        self.marker.ns = "my_namespace"
+        self.marker.id = 0
 
-        # Marker appearance
-        self.debug_marker.type = Marker.SPHERE
-        self.debug_marker.action = Marker.ADD
-        
-        # Position at current waypoint
-        self.debug_marker.pose.position.x = self.waypoint_x
-        self.debug_marker.pose.position.y = self.waypoint_y
-        self.debug_marker.pose.position.z = 0.0
-        
-        self.debug_marker.pose.orientation.x = 0.0
-        self.debug_marker.pose.orientation.y = 0.0
-        self.debug_marker.pose.orientation.z = 0.0
-        self.debug_marker.pose.orientation.w = 1.0
-        
-        # Size and color
-        self.debug_marker.scale.x = 0.1
-        self.debug_marker.scale.y = 0.1
-        self.debug_marker.scale.z = 0.1
-        self.debug_marker.color.a = 1.0
-        self.debug_marker.color.r = 0.0
-        self.debug_marker.color.g = 1.0
-        self.debug_marker.color.b = 0.0
+        self.marker.type = Marker.SPHERE
+        self.marker.action = Marker.ADD
+        self.marker.pose.position.x = self.target_x
+        self.marker.pose.position.y = self.target_y
+        self.marker.pose.position.z = 0.0
+        self.marker.pose.orientation.w = 1.0
+        self.marker.scale.x = 0.1
+        self.marker.scale.y = 0.1
+        self.marker.scale.z = 0.1
+        self.marker.color.a = 1.0
+        self.marker.color.g = 1.0
 
-        self.marker_publisher.publish(self.debug_marker)
+        self.marker_publisher.publish(self.marker)
 
-    def update_fsm_state(self, state_msg):
-        """Update current FSM state from finite state machine"""
-        self.current_fsm_state = state_msg.data
-
+    def state_cb(self, msg):
+        self.fsm_state = msg.data
 
 def main(args=None):
-    """
-    Entry point for obstacle avoidance node
-    """
     rclpy.init(args=args)
-    
-    try:
-        navigation_node = ObstacleAvoidance()
-        rclpy.spin(navigation_node)
-    except KeyboardInterrupt:
-        print("Obstacle avoidance node interrupted")
-    finally:
-        rclpy.shutdown()
-
+    node = ObstacleAvoidance()
+    rclpy.spin(node)
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
