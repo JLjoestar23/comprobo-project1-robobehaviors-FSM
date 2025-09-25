@@ -1,0 +1,9 @@
+source;share/robobehaviors_fsm/hook/pythonpath.ps1
+source;share/robobehaviors_fsm/hook/pythonpath.dsv
+source;share/robobehaviors_fsm/hook/pythonpath.sh
+source;share/robobehaviors_fsm/hook/ament_prefix_path.ps1
+source;share/robobehaviors_fsm/hook/ament_prefix_path.dsv
+source;share/robobehaviors_fsm/hook/ament_prefix_path.sh
+source;../../build/robobehaviors_fsm/share/robobehaviors_fsm/hook/pythonpath_develop.ps1
+source;../../build/robobehaviors_fsm/share/robobehaviors_fsm/hook/pythonpath_develop.dsv
+source;../../build/robobehaviors_fsm/share/robobehaviors_fsm/hook/pythonpath_develop.sh

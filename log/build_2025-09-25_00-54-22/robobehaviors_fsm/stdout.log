@@ -1,0 +1,22 @@
+running develop
+running egg_info
+writing robobehaviors_fsm.egg-info/PKG-INFO
+writing dependency_links to robobehaviors_fsm.egg-info/dependency_links.txt
+writing entry points to robobehaviors_fsm.egg-info/entry_points.txt
+writing requirements to robobehaviors_fsm.egg-info/requires.txt
+writing top-level names to robobehaviors_fsm.egg-info/top_level.txt
+reading manifest file 'robobehaviors_fsm.egg-info/SOURCES.txt'
+writing manifest file 'robobehaviors_fsm.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/python3.10/site-packages/robobehaviors-fsm.egg-link (link to .)
+Installing bumper_estop script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing drive_square script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing finite_state_controller script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing obstacle_avoidance script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing person_following script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing rviz_tutorial script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing teleop script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+Installing wall_follower script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+
+Installed /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm
+running symlink_data

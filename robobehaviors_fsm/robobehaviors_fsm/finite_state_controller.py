@@ -1,94 +1,158 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool
-from geometry_msgs.msg import Twist   # NEW import
+from geometry_msgs.msg import Twist
+from threading import Lock
 
 
 class FiniteStateController(Node):
+    """
+    Main FSM node that coordinates robot behaviors and handles state transitions.
+    
+    Acts as central command arbiter - only this node publishes to /cmd_vel
+    to prevent conflicting commands from multiple behaviors.
+    """
+    
     def __init__(self):
         super().__init__('finite_state_controller')
-
-        # publisher for current state
-        self.state_pub = self.create_publisher(String, 'current_state', 10)
-
-        # publisher for velocity commands (stop robot on estop)
-        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)  # NEW
-
-        # subscribers for triggers
-        self.create_subscription(Bool, "/wall_detected", self.wall_sub_cb, 10)
-        self.create_subscription(Bool, "/estop", self.estop_sub_cb, 10)
-        self.create_subscription(Bool, "/teleop_toggle", self.teleop_sub_cb, 10)  # listen for teleop key
-        self.create_subscription(Bool, "/target_reached", self.obstacle_avoidance_cb, 10)
-
-        # conditions for each state
-        self.wall_detected = None
-        self.estop = None
-        self.teleop_toggle = None
-        self.target_reached = None
-
-        # initial state
-        # "obstacle_avoidance", "wall_following", "teleop", "estop"
+        
+        # Current state
         self.current_state = "obstacle_avoidance"
-        self.publish_state()
+        self.previous_state = ""
         
-        self.timer = self.create_timer(0.1, self.evaluate_state)
-
-    def evaluate_state(self):
-        """periodic loop to publish state"""
+        # Publishers -- cmd_vel is the ONLY publisher to velocity in the entire workspace
+        self.state_publisher = self.create_publisher(String, 'current_state', 10)
+        self.robot_cmd_publisher = self.create_publisher(Twist, '/cmd_vel', 10)  
         
-        if self.estop:
-            self.current_state = "estop"
+        # velocity command subscribers from each node
+        self.create_subscription(Twist, "/obstacle_avoidance_cmd", self.handle_obstacle_cmd, 10)
+        self.create_subscription(Twist, "/wall_following_cmd", self.handle_wall_cmd, 10)
+        self.create_subscription(Twist, "/teleop_cmd", self.handle_teleop_cmd, 10)
 
-        match self.current_state:
-            case "obstacle_avoidance":
-                if self.target_reached and self.wall_detected:
-                    self.current_state = "wall_following"
-                    print(self.current_state)
-            case "wall_following":
-                if self.teleop_toggle:
-                    self.current_state = "teleop"
-                    self.publish_zero_velocity()
-                    print(self.current_state)
-            case "teleop":
-                if not self.teleop_toggle and not self.estop:
-                    self.current_state = "wall_following"
-                    self.publish_zero_velocity()
-                    print(self.current_state)
-            case "estop":
-                self.publish_zero_velocity()
-                if not self.estop and self.teleop_toggle:
-                    self.current_state = "teleop"
-                    print(self.current_state)
+        # State trigger function subs
+        self.create_subscription(Bool, "/wall_detected", self.on_wall_detected, 10)
+        self.create_subscription(Bool, "/estop", self.on_estop_triggered, 10)
+        self.create_subscription(Bool, "/teleop_toggle", self.on_teleop_pressed, 10)
+        self.create_subscription(Bool, "/target_reached", self.on_waypoint_reached, 10)
 
-        self.publish_state()
+        # thread lock to prevent touching variables at same time
+        self.state_lock = Lock()
 
-    def publish_state(self):
-        """publish the current fsm state"""
-        msg = String()
-        msg.data = self.current_state
-        self.state_pub.publish(msg)
-        #self.get_logger().info(f"Publishing, current state: {self.current_state}")
+        self.wall_is_detected = False
+        self.emergency_stop_active = False
+        self.teleop_key_pressed = False
+        self.waypoint_reached = False
+        
+        self.last_teleop_state = False
+        self.latest_obstacle_cmd = Twist()
+        self.latest_wall_cmd = Twist()  
+        self.latest_teleop_cmd = Twist()
 
-    def publish_zero_velocity(self):
-        """publish a Twist with all zeros to stop the robot"""
-        stop_msg = Twist()  # defaults to all zeros
-        self.cmd_pub.publish(stop_msg)
-        self.get_logger().warn("!!! publishing zero velocity command !!!")
+        # Timers
+        self.state_update_timer = self.create_timer(0.05, self.update_state_machine)  
+        self.command_publisher_timer = self.create_timer(0.1, self.publish_active_command)  
+        
+        # Initialize
+        self.broadcast_current_state()
+        self.get_logger().info(f"FSM started in state: {self.current_state}")
 
-    def obstacle_avoidance_cb(self, msg: Bool):
-        self.target_reached = msg.data
+    def update_state_machine(self):
+        with self.state_lock:
+            teleop_just_pressed = self.teleop_key_pressed and not self.last_teleop_state
 
-    def wall_sub_cb(self, msg: Bool):
-        """handle wall detection events"""
-        self.wall_detected = msg.data
+            if self.emergency_stop_active and self.current_state != "estop":
+                self.transition_to("estop")
+                self.last_teleop_state = self.teleop_key_pressed
+                self.broadcast_current_state()
+                return
 
-    def estop_sub_cb(self, msg: Bool):
-        """handle estop events from bumper or keyboard"""
-        self.estop = msg.data
+            match self.current_state:
+                case "obstacle_avoidance":
+                    if self.waypoint_reached and self.wall_is_detected:
+                        self.transition_to("wall_following")
+                case "wall_following":
+                    if teleop_just_pressed:
+                        self.transition_to("teleop")
+                case "teleop":
+                    if teleop_just_pressed and not self.emergency_stop_active and self.wall_is_detected:
+                        self.transition_to("wall_following")
+                case "estop":
+                    if not self.emergency_stop_active and teleop_just_pressed:
+                        self.transition_to("teleop")
+                case _:
+                    self.get_logger().warn(f"Unknown state: {self.current_state}")
 
-    def teleop_sub_cb(self, msg: Bool):
-        """handle teleop mode request from keypress"""
-        self.teleop_toggle = msg.data
+            self.last_teleop_state = self.teleop_key_pressed
+
+        self.broadcast_current_state()
+
+    def transition_to(self, new_state):
+        """Handle state transitions"""
+        if new_state != self.current_state:
+            self.previous_state = self.current_state
+            self.current_state = new_state
+            self.get_logger().info(f"State: {self.previous_state} -> {self.current_state}")
+
+    def publish_active_command(self):
+        """
+        Publish appropriate velocity command based on current state.
+        """
+        if self.emergency_stop_active:
+            self.send_stop_command()
+        elif self.current_state == "obstacle_avoidance":
+            self.robot_cmd_publisher.publish(self.latest_obstacle_cmd)
+        elif self.current_state == "wall_following":
+            self.robot_cmd_publisher.publish(self.latest_wall_cmd)
+        elif self.current_state == "teleop":
+            self.robot_cmd_publisher.publish(self.latest_teleop_cmd)
+        else:
+            # Safety fallback
+            self.send_stop_command()
+    
+    def send_stop_command(self):
+        """Send zero velocity to stop robot"""
+        stop_cmd = Twist()  # All zeros by default
+        self.robot_cmd_publisher.publish(stop_cmd)
+    
+    # Velocity command handlers
+    def handle_obstacle_cmd(self, msg):
+        """Store latest obstacle avoidance command"""
+        self.latest_obstacle_cmd = msg
+        
+    def handle_wall_cmd(self, msg):
+        """Store latest wall following command"""
+        self.latest_wall_cmd = msg
+        
+    def handle_teleop_cmd(self, msg):
+        """Store latest teleop command"""
+        self.latest_teleop_cmd = msg
+
+    # State condition callbacks
+    def on_waypoint_reached(self, msg):
+        with self.state_lock:
+            self.waypoint_reached = bool(msg.data)
+            if self.waypoint_reached:
+                self.get_logger().info("Waypoint reached!")
+
+    def on_wall_detected(self, msg):
+        with self.state_lock:
+            self.wall_is_detected = bool(msg.data)
+
+    def on_estop_triggered(self, msg):
+        with self.state_lock:
+            self.emergency_stop_active = bool(msg.data)
+            if self.emergency_stop_active:
+                self.get_logger().warn("EMERGENCY STOP ACTIVATED!")
+
+    def on_teleop_pressed(self, msg):
+        with self.state_lock:
+            self.teleop_key_pressed = bool(msg.data)
+
+    def broadcast_current_state(self):
+        """Publish current state to all behavior nodes"""
+        state_msg = String()
+        state_msg.data = self.current_state
+        self.state_publisher.publish(state_msg)
 
 
 def main(args=None):

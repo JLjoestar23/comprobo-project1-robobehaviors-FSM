@@ -24,7 +24,7 @@ class ObstacleAvoidance(Node):
         super().__init__('obstacle_avoidance')
 
         # Publishers
-        self.cmd_vel_publisher = self.create_publisher(Twist, "/cmd_vel", 10)  # for motion control
+        self.velocity_publisher = self.create_publisher(Twist, "/obstacle_avoidance_cmd", 10)  # changed from /cmd_vel
         self.marker_publisher = self.create_publisher(Marker, "/visualization_marker", 10)  # for RViz debugging
         self.target_reached_publisher = self.create_publisher(Bool, "/target_reached", 10) # publish if it has reached target waypoint
 
@@ -72,31 +72,22 @@ class ObstacleAvoidance(Node):
         """
         Main loop that deals with navigation and control to drive a Neato in a square.
         """
-        #print("Starting the obstacle avoidance node...")
-        #time.sleep(1)
-
         # set target waypoint
         self.target_x = 4.0
         self.target_y = 0.0
 
         while self.running:
-
-            #self.get_logger().info(self.fsm_state)
-
             if self.fsm_state == "obstacle_avoidance":
-                # control loop until a certain distance threshold is reached
-                #self.get_logger().info(f"Inside if statement")
                 if self.distance_to_goal >= 0.1:
                     self.target_reached.data = False
                     self.target_reached_publisher.publish(self.target_reached)
                     self.velocity.linear.x = self.total_repulsion_lin_vel
                     self.velocity.angular.z = self.total_repulsion_ang_vel
-                    self.cmd_vel_publisher.publish(self.velocity)
+                    self.velocity_publisher.publish(self.velocity)  # changed publisher
                 elif self.distance_to_goal < 0.1:
-                    # once within a certain distance threshold, update target reached status
                     self.velocity.linear.x = 0.0
                     self.velocity.angular.z = 0.0
-                    self.cmd_vel_publisher.publish(self.velocity)
+                    self.velocity_publisher.publish(self.velocity)  # changed publisher
                     self.target_reached.data = True
                     self.target_reached_publisher.publish(self.target_reached)
 
@@ -110,11 +101,6 @@ class ObstacleAvoidance(Node):
         self.current_y = data.pose.pose.position.y
         self.q = data.pose.pose.orientation
         self.current_heading = self.euler_yaw_from_quat(self.q)
-        
-        # for debugging
-        #print(self.current_x)
-        #print(self.current_heading)
-        #print([self.target_x, self.target_y])
 
     def euler_yaw_from_quat(self, q):
         """
@@ -168,7 +154,7 @@ class ObstacleAvoidance(Node):
 
                 dist = math.hypot(obs_x, obs_y)
                 if dist < min_obstacle_dist:
-                    dist = min_obstacle_dist  # prevent division errors
+                    dist = min_obstacle_dist
 
                 # Unit vector from obstacle to robot
                 rep_x = obs_x / dist
@@ -176,7 +162,7 @@ class ObstacleAvoidance(Node):
 
                 # Scale repulsion force (decays with distance)
                 strength = repulsion_gain * (1.0 / dist - 1.0 / influence_radius)
-                strength = max(0.0, strength)  # only repel if within influence
+                strength = max(0.0, strength)
                 fx_total += strength * rep_x
                 fy_total += strength * rep_y
 
@@ -188,50 +174,37 @@ class ObstacleAvoidance(Node):
 
             # Convert angle difference to angular velocity
             heading_error = self.normalize_angle(angle_to_move - self.current_heading)
-            angular_velocity = 1.5 * heading_error  # simple proportional controller
+            angular_velocity = 1.5 * heading_error
 
             # Store for use in main loop
             self.total_repulsion_lin_vel = speed
             self.total_repulsion_ang_vel = angular_velocity
 
-            # Debug print
-            #self.get_logger().info(f"Speed: {speed:.3f}, Angular: {angular_velocity:.3f}, Heading error: {heading_error:.3f}")
-
     def publish_debug_waypoint(self):
         """
         Publish a green spherical marker at the current target position in the 'odom' frame.
-        Useful for visualizing the detected obstacle location in RViz.
         """
-        # setting header
         self.marker.header.frame_id = "odom"
         self.marker.header.stamp = self.get_clock().now().to_msg()
         self.marker.ns = "my_namespace"
         self.marker.id = 0
 
-        # marker properties
         self.marker.type = Marker.SPHERE
         self.marker.action = Marker.ADD
         self.marker.pose.position.x = self.target_x
         self.marker.pose.position.y = self.target_y
         self.marker.pose.position.z = 0.0
-        self.marker.pose.orientation.x = 0.0
-        self.marker.pose.orientation.y = 0.0
-        self.marker.pose.orientation.z = 0.0
         self.marker.pose.orientation.w = 1.0
         self.marker.scale.x = 0.1
         self.marker.scale.y = 0.1
         self.marker.scale.z = 0.1
         self.marker.color.a = 1.0
-        self.marker.color.r = 0.0
         self.marker.color.g = 1.0
-        self.marker.color.b = 0.0
 
-        # publish marker
         self.marker_publisher.publish(self.marker)
 
     def state_cb(self, msg):
-        self.fsm_state = msg.data  # store fsm state
-        #self.get_logger().info(self.fsm_state)
+        self.fsm_state = msg.data
 
 def main(args=None):
     rclpy.init(args=args)

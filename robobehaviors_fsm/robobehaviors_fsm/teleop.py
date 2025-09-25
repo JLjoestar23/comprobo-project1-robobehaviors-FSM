@@ -1,108 +1,194 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, Vector3
+from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool, String
-from threading import Thread
-import tty
-import select
+from threading import Thread, Event
 import sys
 import termios
-
-class Teleop(Node):
-    """ This node's functionality allows the user to control a Neato with a keyboard."""
-    def __init__(self):
-        # intialize node name
-        super().__init__('teleop')
-        # create a publisher that will set linear and angular velocity
-        self.publisher = self.create_publisher(Twist, "/cmd_vel", 10)
-
-        # new: create a publisher to toggle teleop mode in fsm
-        self.teleop_pub = self.create_publisher(Bool, "teleop_toggle", 10)
-
-        # new: subscribe to fsm state
-        self.create_subscription(String, "current_state", self.state_cb, 10)
-
-        # keylogging variables
-        self.settings = termios.tcgetattr(sys.stdin)
-        self.key = None
-
-        # velocity command variables
-        self.velocity = Twist()
-        self.x_vel = 0.0
-        self.z_angular_vel = 0.0
-
-        # state gating
-        self.fsm_state = ""
-        self.teleop_toggle = False
+import atexit
 
 
-        # initiate a blocking, timer-based loop
-        self.running = True
-        self.key_thread = Thread(target=self.teleop_loop)
-        self.key_thread.start()
-
-    def state_cb(self, msg):
-        self.fsm_state = msg.data  # store fsm state
-
-    def get_key(self):
-        """Receive, process, and return the detected keystroke."""
-        tty.setraw(sys.stdin.fileno())
-        select.select([sys.stdin], [], [], 0)
-        key = sys.stdin.read(1)
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.settings)
-        return key
+class TeleopController(Node):
+    """
+    Handles keyboard input for robot control.
+    """
     
-    def teleop_loop(self):
-        """Main loop that allows drive control depending with the keyboard."""
+    def __init__(self):
+        super().__init__('teleop_controller')
+        
+        # velocity and mode publishers - send commands to FSM, not directly to robot
+        self.velocity_pub = self.create_publisher(Twist, "/teleop_cmd", 10)
+        self.mode_toggle_pub = self.create_publisher(Bool, "teleop_toggle", 10)
 
-        self.velocity.linear.x = 0.0
-        self.velocity.angular.z = 0.0
-        self.publisher.publish(self.velocity)
+        # Subscribe to FSM state updates
+        self.create_subscription(String, "current_state", self.update_robot_state, 10)
 
-        while self.running:
-            # get the key stroke
-            self.key = self.get_key()
-            print(self.key)
+        # Terminal setup for raw key input
+        self.original_terminal_settings = termios.tcgetattr(sys.stdin)
+        atexit.register(self.restore_terminal)
 
+        # Current velocities
+        self.current_velocity = Twist()
+        self.linear_speed = 0.0
+        self.angular_speed = 0.0
+
+        # State tracking
+        self.robot_state = "unknown"
+        self.teleop_mode_active = False
+        
+        # Control flags
+        self.keep_running = True
+        self.shutdown_requested = Event()
+
+        # Setup terminal and start keyboard thread
+        self.configure_terminal_for_raw_input()
+        self.keyboard_thread = Thread(target=self.keyboard_handler, daemon=True)
+        self.keyboard_thread.start()
+        
+        self.print_startup_message()
+        
+        self.get_logger().info("Teleop node initialized")
+
+
+    def configure_terminal_for_raw_input(self):
+        """Configure terminal to read keys immediately without buffering"""
+        try:
+            new_settings = termios.tcgetattr(sys.stdin)
+            # Disable canonical mode (line buffering) and echo
+            new_settings[3] = new_settings[3] & ~(termios.ECHO | termios.ICANON)
+            new_settings[6][termios.VMIN] = 1  # Read minimum 1 character
+            new_settings[6][termios.VTIME] = 0  # No timeout
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, new_settings)
+        except Exception as e:
+            self.get_logger().error(f"Failed to configure terminal: {e}")
+
+    def restore_terminal(self):
+        """Restore original terminal settings on exit"""
+        try:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.original_terminal_settings)
+        except:
+            pass  # Don't crash on exit
+
+    def print_startup_message(self):
+        """Print helpful startup information"""
+        print("\n" + "="*50)
+        print("  ROBOT TELEOP CONTROLLER")
+        print("="*50)
+        print("Controls:")
+        print("  t     - Toggle teleop mode")
+        print("  w/s   - Forward/backward")  
+        print("  a/d   - Turn left/right")
+        print("  q     - Stop linear motion only")
+        print("  e     - Stop rotation only")
+        print("  space - Stop all movement")
+        print("  Ctrl+C- Quit teleop")
+        print("\nTerminal is in raw mode - keys work immediately!")
+        print("Current state: Waiting for FSM connection...")
+        print("-"*50)
+
+    def update_robot_state(self, msg):
+        """Update current robot state from FSM"""
+        self.robot_state = msg.data
+
+    def read_single_keypress(self):
+        """Read one character from stdin immediately"""
+        try:
+            return sys.stdin.read(1)
+        except:
+            return None
+
+    def keyboard_handler(self):
+        """Main keyboard input loop - runs in separate thread"""
+        while self.keep_running and not self.shutdown_requested.is_set():
+            try:
+                key = self.read_single_keypress()
+                if key:
+                    self.process_keypress(key)
+            except KeyboardInterrupt:
+                self.keep_running = False
+                break
+            except Exception as e:
+                self.get_logger().debug(f"Key read error: {e}")
+                continue
+
+    def process_keypress(self, key):
+        """Handle individual key presses"""
+        print(f"Key: '{key}' | Robot: {self.robot_state:12s}", end=" | ")
+        
+        if key == "t":
             # Toggle teleop mode
-            if self.key == "t" and (self.fsm_state != "wall_following" or self.fsm_state != "estop" ): # toggle teleop mode
-                self.teleop_toggle = not self.teleop_toggle
-                self.teleop_pub.publish(Bool(data=(self.teleop_toggle)))  # send signal to fsm
+            self.teleop_mode_active = not self.teleop_mode_active
+            toggle_msg = Bool()
+            toggle_msg.data = self.teleop_mode_active
+            self.mode_toggle_pub.publish(toggle_msg)
+            
+            status = "ENABLED" if self.teleop_mode_active else "DISABLED"
+            print(f"Teleop: {status}")
+            return
 
-            if self.fsm_state == "teleop":
-                if self.key == "w": # increment linear velocity forward
-                    self.velocity.linear.x = round(self.velocity.linear.x + 0.1, 1)
-                elif self.key == "s": # increment linear velocity reverse
-                    self.velocity.linear.x = round(self.velocity.linear.x - 0.1, 1)
-                elif self.key == "a": # increment angular velocity left
-                    self.velocity.angular.z = round(self.velocity.angular.z + 0.5, 1)
-                elif self.key == "d": # increment angular velocity right
-                    self.velocity.angular.z = round(self.velocity.angular.z - 0.5, 1)
-                elif self.key == "e": # angular velocity stop
-                    self.velocity.angular.z = 0.0
-                elif self.key == "q": # linear velocity stop
-                    self.velocity.linear.x = 0.0
-                elif self.key == " ": # both stop
-                    self.velocity.linear.x = 0.0
-                    self.velocity.angular.z = 0.0
-                elif self.key == "!": # shutdown the node
-                    self.velocity.linear.x = 0.0
-                    self.velocity.angular.z = 0.0
-                    if self.fsm_state == "teleop":
-                        self.publisher.publish(self.velocity)
-                    self.running = False
-                    rclpy.shutdown()
+        if self.robot_state == "teleop":
+            self.handle_movement_command(key)
+        else:
+            print("(Not in teleop mode)")
 
-                self.publisher.publish(self.velocity)
-                print("Linear Velocity: " + str(self.velocity.linear.x))
-                print("Angular Velocity: " + str(self.velocity.angular.z))
+    def handle_movement_command(self, key):
+        """Process movement keys when in teleop mode"""
+        movement_made = True
+
+        match key:
+            case "w":
+                self.linear_speed = min(1.0, self.linear_speed + 0.1)
+            case "s":
+                self.linear_speed = max(-1.0, self.linear_speed - 0.1)
+            case "a":
+                self.angular_speed = min(2.0, self.angular_speed + 0.2)
+            case "d":
+                self.angular_speed = max(-2.0, self.angular_speed - 0.2)
+            case " ":
+                self.linear_speed = 0.0
+                self.angular_speed = 0.0
+            case "q":  # stop linear motion only
+                self.linear_speed = 0.0
+            case "e":  # stop rotation only
+                self.angular_speed = 0.0
+            case _:
+                movement_made = False
+
+        if movement_made:
+            self.linear_speed = round(self.linear_speed, 2)
+            self.angular_speed = round(self.angular_speed, 2)
+            self.send_velocity_command()
+            print(f"Speed: {self.linear_speed:+0.2f} m/s | Turn: {self.angular_speed:+0.2f} rad/s")
+        else:
+            print("(Unknown key)")
+
+    def send_velocity_command(self):
+        """Publish current velocity to robot"""
+        self.current_velocity.linear.x = float(self.linear_speed)
+        self.current_velocity.angular.z = float(self.angular_speed)
+        self.velocity_pub.publish(self.current_velocity)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = Teleop()
-    rclpy.spin(node)
-    rclpy.shutdown()
+    
+    try:
+        teleop_node = TeleopController()
+        
+        while rclpy.ok() and teleop_node.keep_running:
+            rclpy.spin_once(teleop_node, timeout_sec=0.1)
+        
+        teleop_node.destroy_node()
+        
+    except KeyboardInterrupt:
+        print("\nShutdown requested...")
+    except Exception as e:
+        print(f"Error in teleop: {e}")
+    finally:
+        try:
+            rclpy.shutdown()
+        except:
+            pass
 
 
 if __name__ == '__main__':

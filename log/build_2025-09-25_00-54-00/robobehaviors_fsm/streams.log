@@ -1,0 +1,33 @@
+[0.356s] Invoking command in '/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm': PYTHONPATH=/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/build --no-deps symlink_data
+[0.507s] running develop
+[0.583s] running egg_info
+[0.583s] creating robobehaviors_fsm.egg-info
+[0.583s] writing robobehaviors_fsm.egg-info/PKG-INFO
+[0.583s] writing dependency_links to robobehaviors_fsm.egg-info/dependency_links.txt
+[0.584s] writing entry points to robobehaviors_fsm.egg-info/entry_points.txt
+[0.584s] writing requirements to robobehaviors_fsm.egg-info/requires.txt
+[0.584s] writing top-level names to robobehaviors_fsm.egg-info/top_level.txt
+[0.584s] writing manifest file 'robobehaviors_fsm.egg-info/SOURCES.txt'
+[0.584s] reading manifest file 'robobehaviors_fsm.egg-info/SOURCES.txt'
+[0.585s] writing manifest file 'robobehaviors_fsm.egg-info/SOURCES.txt'
+[0.586s] running build_ext
+[0.586s] Creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/python3.10/site-packages/robobehaviors-fsm.egg-link (link to .)
+[0.586s] Installing bumper_estop script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.586s] Installing drive_square script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing finite_state_controller script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing obstacle_avoidance script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing person_following script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing rviz_tutorial script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing teleop script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] Installing wall_follower script to /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/robobehaviors_fsm
+[0.587s] 
+[0.587s] Installed /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm
+[0.587s] running symlink_data
+[0.587s] creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/ament_index
+[0.587s] creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/ament_index/resource_index
+[0.587s] creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/ament_index/resource_index/packages
+[0.588s] symbolically linking /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/resource/robobehaviors_fsm -> /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/ament_index/resource_index/packages
+[0.588s] symbolically linking /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/package.xml -> /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/robobehaviors_fsm
+[0.588s] creating /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/robobehaviors_fsm/launch
+[0.588s] symbolically linking /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/launch/fsm_bringup.launch.py -> /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/share/robobehaviors_fsm/launch
+[0.604s] Invoked command in '/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm' returned '0': PYTHONPATH=/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/install/robobehaviors_fsm/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/ros/ros2_ws/src/comprobo-project1-robobehaviors-FSM/build/robobehaviors_fsm/build --no-deps symlink_data
