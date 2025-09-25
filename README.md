@@ -24,6 +24,16 @@ The goal of the “Teleop” behavior is to enable manual control of a Neato’s
 
 The following keybinds, shown in the table below, were chosen based on the common “WASD” control scheme commonly used for movement in videogames. Using such a control scheme allows for intuitive direction control that many users would already be used to.
 
+| Key    | Linear Velocity | Angular Velocity |
+|--------|----------------|------------------|
+| w      | +0.1 m/s       | +0.0 rad/s       |
+| s      | -0.1 m/s       | +0.0 rad/s       |
+| a      | +0.0 m/s       | +0.5 rad/s       |
+| d      | +0.0 m/s       | -0.5 rad/s       |
+| e      | +0.0 m/s       | 0.0 rad/s        |
+| q      | 0.0 m/s        | +0.0 rad/s       |
+| space  | 0.0 m/s        | 0.0 rad/s        |
+| !      | exit node      | exit node        |
 
 
 
