@@ -10,7 +10,7 @@ This warm-up project introduced us to ROS2 and the Neato robots through a series
 ---
 
 ## 2  Teleoperation
-![Teleoperation Demo](figures/gazeb_teleop_demo.gif){ width="800" height="600" style="display: block; margin: 0 auto" }
+![Teleoperation Demo](figures/gazeb_teleop_demo.gif)
 
 ### 2.1 Overview
 The goal of the "Teleop" behavior is to enable manual control of a Neato's linear and angular velocity using a standard keyboard interface. Being able to manually control a robot  is especially valuable for tasks such as initial testing, manual repositioning, or overriding autonomous behaviors in uncertain environments. Teleop serves as both a debugging tool and a fallback mode, ensuring that the robot can still be safely navigated even if higher-level behaviors fail or produce unexpected results.
