@@ -1,14 +1,14 @@
-“Warm Up” Project: Finite State Machines, Wall Following, Obstacle Avoidance
+# “Warm Up” Project: Finite State Machines, Wall Following, Obstacle Avoidance  
 
-Joseph Liu and David Barsoum
+**Joseph Liu and David Barsoum**  
+Computational Robotics, Fall 2025  
 
-Computational Robotics Fall 2025
+---
 
+## 1. Overview  
+This warm-up project introduced us to ROS2 and the Neato robots through a series of behavior implementations. We developed six key behaviors: teleoperation, square-path driving, wall following, person tracking, and obstacle avoidance. In addition to these six behaviors, we also developed a finite-state machine that ties obstacle avoidance, wall following, teleoperation, and emergency stop functionality together.  
 
-
-# 1  Overview
-
-This warm-up project introduced us to ROS2 and the Neato robots through a series of behavior implementations. We developed six key behaviors: teleoperation, square-path driving, wall following, person tracking, and obstacle avoidance. In addition to these six behaviors, we also developed a finite-state machine that ties obstacle avoidance, wall following, teleoperation, and emergency stop functionality together.
+---
 
 # 2  Teleoperation
 
