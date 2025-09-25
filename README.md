@@ -53,8 +53,6 @@ Once the heading is aligned, the robot enters a combined motion phase, using bot
 
 Odometry data is solely used to estimate both position and heading. The data was obtained through creating a subscriber to the “/odom” topic, where position is described as a 3D vector and orientation as a 4D quaternion. It is possible to directly extract and use the x and y positions, but the quaternion orientation must be converted to a heading angle using standard transformation formulas. 
 
-(insert equation)
-
 The node runs the control logic on a separate thread to avoid blocking the ROS event loop and ensure responsiveness. While this implementation assumes a clear and static environment, it provides a foundational behavior for waypoint navigation using odometry data.
 
 ### 3.3 Limitations/Future Improvements
