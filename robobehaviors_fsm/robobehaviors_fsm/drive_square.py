@@ -60,8 +60,6 @@ class DriveSquare(Node):
             # calculate the heading error once before starting the turn phase
             self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
 
-            #print(self.heading_error) #debugging purposes
-
             # while heading error is larger than error threshold of 0.008 rads,
             # use proportional control to command angular velocity in the
             # direction of error
@@ -88,6 +86,8 @@ class DriveSquare(Node):
             while (abs(self.euclidian_distance) > 0.05):
                 self.calc_target_heading()
                 self.calc_euclidian_distance()
+                print(f"Heading: {self.current_heading}") #debugging purposes
+                print(f"Euclidean Distance: {self.euclidian_distance}") # debugging purposes
                 self.heading_error = self.normalize_angle(self.target_heading - self.current_heading)
                 self.velocity.linear.x = min(0.3, 1.5 * self.euclidian_distance)
                 self.velocity.angular.z = 1.5 * self.heading_error
